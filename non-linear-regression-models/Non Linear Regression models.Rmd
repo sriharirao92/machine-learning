@@ -1,0 +1,358 @@
+---
+title: "Non Linear Regression "
+output:
+  word_document: default
+  html_notebook: default
+---
+
+** Simulating  a single predictor and a nonlinear relationship, such as a sin wave shown below, also investigating the relationship between the cost, epsilon and kernel parameters for a support vector machine model**
+
+```{r warning=FALSE, echo=FALSE}
+# Load required libraries 
+library(AppliedPredictiveModeling)
+library(caret)
+
+set.seed(100)
+
+# Simulate a sine wave function
+x <- runif(100, min = 2, max = 10)
+y <- sin(x) + rnorm(length(x)) * .25
+sinData <- data.frame(x = x, y = y)
+
+# plot the sine wave generated
+plot(x, y)
+
+# Create a grid of x values to use for prediction
+dataGrid <- data.frame(x = seq(2, 10, length = 100))
+```
+
+**Fitting different models using a radial basis function and different values of the cost (the C parameter). Also we have plotted the fitted curve**
+
+```{r warning=FALSE, echo=FALSE}
+library(kernlab)
+
+# Build an SVM model with parameters to ksvm function
+rbfSVM <- ksvm(x = x, y = y, data = sinData, kernel ="rbfdot", kpar = "automatic", C = 1, epsilon = 0.1)
+modelPrediction <- predict(rbfSVM, newdata = dataGrid)
+
+## This is a matrix with one column. We can plot the
+## model predictions by adding points to the previous plot
+plot(x, y)
+points(x = dataGrid$x, y = modelPrediction[,1], type = "l", col = "blue")
+```
+
+**Running a grid search with diffrent values of epsilon and cost values:**
+
+```{r fig.width=12,fig.height=15, warning=FALSE, echo=FALSE}
+
+# Generate a parameter grid to perform grid search as shown below:
+paramGrid <- expand.grid(eps = c(0.01,0.05,0.1,0.5), costs = 2^c(-2,-1,0,1,2))
+
+par(mfrow = c(5,4))
+for(i in 1:nrow(paramGrid)){
+  rbfSVM <- ksvm(x = x, y = y, data = sinData, kernel ="rbfdot", kpar = "automatic", C = paramGrid$costs[i], epsilon = paramGrid$eps[i])
+  modelPrediction <- predict(rbfSVM, newdata = dataGrid)
+  plot(x, y,main=paste("Cost =",paramGrid$costs[i],"epsilon =",paramGrid$eps[i]))
+  points(x = dataGrid$x, y = modelPrediction[,1], type = "l", col = "blue",lwd=2)
+}
+```
+
+**Using the kpar argument, lets try different values of sigma and C to understand how this parameter changes the model fit and also How the cost, epsilon values affect the model?**
+
+```{r fig.height=12,fig.width=9,echo=FALSE,warning=FALSE}
+paramGrid1 <- expand.grid(eps = c(0.01,0.05,0.1,0.5), costs = 2^c(-2,-1,0,1,2), sigma = c(0.1,0.25,0.5,1))
+
+sigma = c(0.1,0.25,0.5,1)
+
+# Plot and predict the values.
+
+par(mfrow = c(6,4))
+plot.new()
+legend("top",legend = c("0.1"),col=c("blue"), lty=1,horiz=TRUE,cex=2,box.lty=0,lwd=2)
+plot.new()
+legend("top",legend = c("0.25"),col=c("red"), lty=1,horiz=TRUE,cex=2,box.lty=0,lwd=2)
+plot.new()
+legend("top",legend = c("0.5"),col=c("orange"), lty=1,horiz=TRUE,cex=2,box.lty=0,lwd=2)
+plot.new()
+legend("top",legend = c("1"),col=c("green"), lty=1,horiz=TRUE,cex=2,box.lty=0,lwd=2)
+for(i in 1:20){
+  rbfSVM1 <- ksvm(x = x, y = y, data = sinData, kernel ="rbfdot", kpar = list(sigma = sigma[1]), C = paramGrid1$costs[i], epsilon = paramGrid1$eps[i])
+  modelPrediction1 <- predict(rbfSVM1, newdata = dataGrid)
+  
+  rbfSVM2 <- ksvm(x = x, y = y, data = sinData, kernel ="rbfdot", kpar = list(sigma = sigma[2]), C = paramGrid1$costs[i], epsilon = paramGrid1$eps[i])
+  modelPrediction2 <- predict(rbfSVM2, newdata = dataGrid)
+  
+  rbfSVM3 <- ksvm(x = x, y = y, data = sinData, kernel ="rbfdot", kpar = list(sigma = sigma[3]), C = paramGrid1$costs[i], epsilon = paramGrid1$eps[i])
+  modelPrediction3 <- predict(rbfSVM3, newdata = dataGrid)
+  
+  rbfSVM4 <- ksvm(x = x, y = y, data = sinData, kernel ="rbfdot", kpar = list(sigma = sigma[4]), C = paramGrid1$costs[i], epsilon = paramGrid1$eps[i])
+  modelPrediction4 <- predict(rbfSVM4, newdata = dataGrid)
+  
+  plot(x, y,main=paste("Cost =",paramGrid1$costs[i],"epsilon =",paramGrid1$eps[i]))
+  points(x = dataGrid$x, y = modelPrediction1[,1], type = "l", col = "blue", lwd = 2)
+  points(x = dataGrid$x, y = modelPrediction2[,1], type = "l", col = "red", lwd = 2)
+  points(x = dataGrid$x, y = modelPrediction3[,1], type = "l", col = "orange", lwd = 2)
+  points(x = dataGrid$x, y = modelPrediction4[,1], type = "l", col = "green", lwd = 2)
+}
+```
+
+**For Tecator data - lets build SVM, neural network, MARS, and KNN models. Since neural networks are especially sensitive to highly correlated predictors, we might have to do some pre-processing using PCA**
+
+```{r warning=FALSE, echo=FALSE}
+data(tecator)
+
+# partition the data into test and train dataset
+ind <- createDataPartition(endpoints[,2],p=0.8,list=FALSE)
+
+Xtrain <- absorp[ind,]
+Xtest <- absorp[-ind,]
+
+Ytrain <- endpoints[ind,2]
+Ytest <- endpoints[-ind,2]
+```
+
+```{r warning=FALSE, echo=FALSE}
+library(kernlab)
+library(caret)
+ctrl <- trainControl(summaryFunction = twoClassSummary,
+                     classProbs = FALSE)
+```
+
+***Support Vector Machines:***
+
+```{r warning=FALSE, echo=FALSE}
+set.seed(202)
+
+svmRTuned <- train(as.data.frame(Xtrain), Ytrain, method = "svmRadial", preProc = c("center", "scale"), tuneLength = 14, trControl = trainControl(method = "LGOCV"))
+
+# See the tuning parameters and the optimal parameter.
+svmRTuned
+```
+
+```{r warning=FALSE, echo=FALSE}
+# Plot the results of Tuned SVM model
+plot(log(svmRTuned$results$C),svmRTuned$results$RMSE,type="l",xlab="Logarithm of Cost",ylab="RMSE", main="Cost Parameter Tuning")
+```
+
+
+The final model selected for SVM is as shown below:
+
+```{r warning=FALSE, echo=FALSE}
+svmRTuned$finalModel
+```
+
+The RMSE and R-Squared Values are as shown below:
+
+
+```{r warning=FALSE, echo=FALSE}
+defaultSummary(data.frame(obs = Ytest, pred = predict(svmRTuned$finalModel,predict(preProcess(as.data.frame(Xtest),c("center","scale")),as.data.frame(Xtest)))))
+
+```
+
+***KNN:***
+
+```{r warning=FALSE, echo=FALSE}
+set.seed(100)
+
+knnTune <- train(as.data.frame(Xtrain), Ytrain, method = "knn", 
+                 preProc = c("center", "scale"), tuneGrid = data.frame(.k = 1:20),
+                 trControl = trainControl(method = "LGOCV"))
+
+knnTune
+```
+
+```{r warning=FALSE, echo=FALSE}
+plot(knnTune)
+```
+
+
+```{r warning=FALSE, echo=FALSE}
+knnTune$finalModel
+```
+
+```{r warning=FALSE, echo=FALSE}
+defaultSummary(data.frame(obs = Ytest, pred = predict(knnTune$finalModel,predict(preProcess(as.data.frame(Xtest),c("center","scale")),as.data.frame(Xtest)))))
+```
+
+***MARS:***
+
+```{r warning=FALSE, echo=FALSE}
+marsGrid <- expand.grid(.degree = 1:2, .nprune = 2:38)
+
+set.seed(100)
+marsTuned <- train(as.data.frame(Xtrain), Ytrain, method = "earth", 
+                   tuneGrid = marsGrid, trControl = trainControl(method = "LGOCV"))
+
+marsTuned
+```
+
+```{r warning=FALSE, echo=FALSE}
+plot(marsTuned)
+```
+
+
+```{r warning=FALSE, echo=FALSE}
+marsTuned$finalModel
+```
+
+RMSE and R-Squared values are:
+
+```{r warning=FALSE, echo=FALSE}
+defaultSummary(data.frame(obs = Ytest, pred = predict(marsTuned$finalModel,predict(preProcess(as.data.frame(Xtest),c("center","scale")),as.data.frame(Xtest)))[,1]))
+```
+
+***Neural Networks***
+
+```{r warning=FALSE, echo=FALSE}
+nnetGrid <- expand.grid(.decay = c(0.01), .size = c(4), .bag = FALSE)
+
+set.seed(100)
+nnetTune <- train(as.data.frame(Xtrain), Ytrain,method = "avNNet", tuneGrid = nnetGrid, 
+                  trControl = trainControl(method = "LGOCV"),
+                  preProc = c("center", "scale"), linout = TRUE, trace = FALSE,
+                  MaxNWts = 10 * (ncol(as.data.frame(Xtrain)) + 1) + 10 + 1, maxit = 500)
+```
+
+```{r warning=FALSE, echo=FALSE}
+nnetTune
+```
+
+
+```{r warning=FALSE, echo=FALSE}
+nnetTune$finalModel
+```
+
+RMSE and R-Squared values are:
+
+```{r warning=FALSE, echo=FALSE}
+defaultSummary(data.frame(obs = Ytest, pred = predict(nnetTune$finalModel,predict(preProcess(as.data.frame(Xtest),c("center","scale")),as.data.frame(Xtest)))))
+```
+
+**Neural Nets model after removing highly correlated predictors**
+
+```{r warning=FALSE, echo=FALSE}
+set.seed(100)
+nnetTune1 <- train(as.data.frame(Xtrain), Ytrain,method = "avNNet", tuneGrid = nnetGrid, 
+                  trControl = trainControl(method = "LGOCV"),
+                  preProc = c("center", "scale","pca"), linout = TRUE, trace = FALSE,
+                  MaxNWts = 10 * (ncol(as.data.frame(Xtrain)) + 1) + 10 + 1, maxit = 500)
+```
+
+```{r warning=FALSE, echo=FALSE}
+nnetTune1
+```
+
+
+```{r warning=FALSE, echo=FALSE}
+nnetTune1$finalModel
+```
+
+RMSE and R-Squared values are:
+
+```{r warning=FALSE, echo=FALSE}
+library(caret)
+defaultSummary(data.frame(obs = Ytest, pred = predict(nnetTune1$finalModel,predict(preProcess(as.data.frame(Xtest),c("center","scale","pca")),as.data.frame(Xtest)))))
+```
+
+**Return to the permeability problem outlined in Exercise 6.2. Train several nonlinear regression models and evaluate the resampling and test set performance.**
+
+```{r warning=FALSE, echo=FALSE}
+library(nnet)
+library(caret)
+library(AppliedPredictiveModeling)
+data("permeability")
+
+zerovar <- nearZeroVar(fingerprints)
+newFingerprint <- fingerprints[,-zerovar]
+
+#data split
+
+ind1 <- createDataPartition(permeability,p=0.8,list = F)
+Xtrain1 <- newFingerprint[ind1,]
+Ytrain1 <- permeability[ind1,]
+
+Xtest1 <- newFingerprint[-ind1,]
+Ytest1 <- permeability[-ind1,]
+```
+
+
+**(a) Which nonlinear regression model gives the optimal resampling and test set performance?**
+
+```{r warning=FALSE, echo=FALSE}
+set.seed(202)
+
+svmRTuned1 <- train(as.data.frame(Xtrain1), Ytrain1, method = "svmRadial", preProc = c("center", "scale"), tuneLength = 14, trControl = trainControl(method = "LGOCV"))
+
+svmRTuned1
+```
+
+```{r warning=FALSE, echo=FALSE}
+plot(log(svmRTuned1$results$C),svmRTuned1$results$RMSE,type="l")
+```
+
+
+The final model selected for SVM is as shown below:
+
+```{r warning=FALSE, echo=FALSE}
+svmRTuned1$finalModel
+```
+
+The RMSE and R-Squared Values are as shown below:
+
+
+```{r warning=FALSE, echo=FALSE}
+defaultSummary(data.frame(obs = Ytest1, pred = predict(svmRTuned1$finalModel,predict(preProcess(as.data.frame(Xtest1),c("center","scale")),as.data.frame(Xtest1)))))
+```
+
+***KNN:***
+
+```{r warning=FALSE, echo=FALSE}
+set.seed(100)
+
+knnTune1 <- train(as.data.frame(Xtrain1), Ytrain1, method = "knn", 
+                 preProc = c("center", "scale"), tuneGrid = data.frame(.k = 1:20),
+                 trControl = trainControl(method = "LGOCV"))
+
+knnTune1
+```
+
+```{r warning=FALSE, echo=FALSE}
+plot(knnTune1)
+```
+
+
+```{r warning=FALSE, echo=FALSE}
+knnTune1$finalModel
+```
+
+```{r warning=FALSE, echo=FALSE}
+defaultSummary(data.frame(obs = Ytest1, pred = predict(knnTune1$finalModel,predict(preProcess(as.data.frame(Xtest1),c("center","scale")),as.data.frame(Xtest1)))))
+```
+
+***MARS:***
+
+```{r warning=FALSE, echo=FALSE}
+marsGrid1 <- expand.grid(.degree = 1:2, .nprune = 2:38)
+
+set.seed(100)
+marsTuned1 <- train(as.data.frame(Xtrain1), Ytrain1, method = "earth", 
+                   tuneGrid = marsGrid1, trControl = trainControl(method = "LGOCV"))
+
+marsTuned1
+```
+
+```{r warning=FALSE, echo=FALSE}
+plot(marsTuned1)
+```
+
+
+```{r warning=FALSE, echo=FALSE}
+marsTuned1$finalModel
+```
+
+RMSE and R-Squared values are:
+
+```{r warning=FALSE, echo=FALSE}
+defaultSummary(data.frame(obs = Ytest1, pred = predict(marsTuned1$finalModel,predict(preProcess(as.data.frame(Xtest1),c("center","scale")),as.data.frame(Xtest1)))[,1]))
+```
+
